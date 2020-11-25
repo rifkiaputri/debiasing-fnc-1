@@ -136,3 +136,4 @@ dataset/*.xlsx
 cache_dir/
 runs/
 wandb/
+*.csv
