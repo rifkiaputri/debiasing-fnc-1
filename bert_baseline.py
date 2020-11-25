@@ -46,10 +46,13 @@ transformers_logger.setLevel(logging.WARNING)
 # Preparing label
 if args.task == 'fnc':
     class_labels = ['agree', 'disagree', 'discuss']
+    class_weights = [1.22, 5.33, 0.50]
 elif args.task == 'fever':
-    class_labels = ['SUPPORTS', 'REFUTES']
+    class_labels = ['SUPPORTS', 'REFUTES', 'NOT ENOUGH INFO']
+    class_weights = None
 else:
     class_labels = []
+    class_weights = None
 
 # Preparing train and eval data
 if args.task == 'fnc':
@@ -63,11 +66,11 @@ elif args.task == 'fever':
     db_data, db_cols = load_fever_jsonl('dataset/fever/train.jsonl')
     train_df = pd.DataFrame(db_data, columns=db_cols)
     train_df.columns = ['text', 'labels']
-    train_df = train_df[train_df.labels != 'NOT ENOUGH INFO']
+    # train_df = train_df[train_df.labels != 'NOT ENOUGH INFO']
     db_data, db_cols = load_fever_jsonl('dataset/fever/shared_task_dev.jsonl')
     eval_df = pd.DataFrame(db_data, columns=db_cols)
     eval_df.columns = ['text', 'labels']
-    eval_df = eval_df[eval_df.labels != 'NOT ENOUGH INFO']
+    # eval_df = eval_df[eval_df.labels != 'NOT ENOUGH INFO']
 else:
     raise NotImplementedError('Undefined task.')
 
@@ -77,8 +80,8 @@ model_args.num_train_epochs = 10
 model_args.train_batch_size = 64
 model_args.eval_batch_size = 32
 model_args.learning_rate = args.lr
-model_args.output_dir = args.out + '/'
-model_args.best_model_dir = args.out + '/best-model/'
+model_args.output_dir = '/mnt/nas2/kiki/debiasing-fnc-1/outputs/' + args.out + '/'
+model_args.best_model_dir = '/mnt/nas2/kiki/debiasing-fnc-1/outputs/' + args.out + '/best-model/'
 model_args.labels_list = class_labels
 model_args.wandb_project = args.proj
 model_args.use_early_stopping = True
@@ -95,8 +98,8 @@ model_args.manual_seed = 42
 model = ClassificationModel(
     'bert',
     'bert-base-cased',
-    num_labels=3,
-    weight=[1.22, 5.33, 0.50],
+    num_labels=len(class_labels),
+    weight=class_weights,
     args=model_args,
     cuda_device=args.dnum,
 )
@@ -108,8 +111,8 @@ model.train_model(train_df, eval_df=eval_df, acc=sklearn.metrics.accuracy_score,
 model = ClassificationModel(
     'bert',
     model_args.best_model_dir,
-    num_labels=3,
-    weight=[1.22, 5.33, 0.50],
+    num_labels=len(class_labels),
+    weight=class_weights,
     args=model_args,
     cuda_device=args.dnum,
 )
