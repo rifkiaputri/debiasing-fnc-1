@@ -3,7 +3,7 @@ import json
 import pandas as pd
 import logging
 import sklearn
-from simpletransformers.classification import ClassificationModel, ClassificationArgs
+from my_classification import ClassificationModel, ClassificationArgs
 
 
 def my_f1_score(y_true, y_pred):
