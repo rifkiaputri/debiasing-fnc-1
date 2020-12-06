@@ -49,7 +49,8 @@ transformers_logger.setLevel(logging.WARNING)
 # Preparing label
 if args.task == 'fnc':
     class_labels = ['agree', 'disagree', 'discuss']
-    class_weights = [1.22, 5.33, 0.50]
+    # class_weights = [1, 2]
+    class_weights = [2.42, 10.61, 1.00]
 elif args.task == 'fever':
     class_labels = ['SUPPORTS', 'REFUTES', 'NOT ENOUGH INFO']
     class_weights = None
@@ -62,13 +63,15 @@ if args.task == 'fnc':
     train_df = pd.read_csv('dataset/train_stances.csv', usecols=['Headline', 'Stance'])
     train_df.columns = ['text', 'labels']
     train_df = train_df[train_df.labels != 'unrelated']
+    # train_df = train_df[train_df.labels != 'discuss']
     eval_df = pd.read_csv('dataset/competition_test_stances.csv', usecols=['Headline', 'Stance'])
     eval_df.columns = ['text', 'labels']
     eval_df = eval_df[eval_df.labels != 'unrelated']
+    # eval_df = eval_df[eval_df.labels != 'discuss']
 elif args.task == 'fever':
-    db_data, db_cols = load_fever_jsonl('dataset/fever/fever.train.jsonl', is_train=True)
+    db_data, db_cols = load_fever_jsonl('dataset/fever/fever.train.jsonl', is_train=False)
     train_df = pd.DataFrame(db_data, columns=db_cols)
-    train_df.columns = ['text', 'labels', 'weight']
+    train_df.columns = ['text', 'labels']
     # train_df = train_df[train_df.labels != 'NOT ENOUGH INFO']
     db_data, db_cols = load_fever_jsonl('dataset/fever/fever.dev.jsonl', is_train=False)
     eval_df = pd.DataFrame(db_data, columns=db_cols)

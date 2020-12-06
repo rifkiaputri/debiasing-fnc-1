@@ -880,14 +880,14 @@ class BertForSequenceClassification(BertPreTrainedModel):
         loss, logits = outputs[:2]
 
     """
-    def __init__(self, config, weight=None):
+    def __init__(self, config, class_weight=None):
         super(BertForSequenceClassification, self).__init__(config)
         self.num_labels = config.num_labels
 
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, self.config.num_labels)
-        self.weight = weight
+        self.class_weight = class_weight
 
         self.init_weights()
 
@@ -913,7 +913,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
                 loss_fct = MSELoss()
                 loss = loss_fct(logits.view(-1), labels.view(-1))
             else:
-                loss_fct = CrossEntropyLoss(weight=self.weight)
+                loss_fct = CrossEntropyLoss(weight=self.class_weight)
                 if weights is None:
                     loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
                 else:

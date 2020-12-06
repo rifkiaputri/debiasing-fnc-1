@@ -30,14 +30,8 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, Tenso
 from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm, trange
 from tqdm.contrib import tenumerate
-from pytorch_transformers import (
-    WEIGHTS_NAME,
-    AdamW,
-    BertConfig,
-    BertTokenizer,
-    get_linear_schedule_with_warmup,
-)
 from transformers.convert_graph_to_onnx import convert, quantize
+from transformers import AdamW, get_linear_schedule_with_warmup, BertConfig, BertTokenizer
 
 from my_classification_utils import (
     InputExample,
@@ -169,7 +163,7 @@ class ClassificationModel:
             if not self.args.quantized_model:
                 if self.weight:
                     self.model = model_class.from_pretrained(
-                        model_name, config=self.config, weight=torch.Tensor(self.weight).to(self.device), **kwargs,
+                        model_name, config=self.config, class_weight=torch.Tensor(self.weight).to(self.device), **kwargs,
                     )
                 else:
                     self.model = model_class.from_pretrained(model_name, config=self.config, **kwargs)
@@ -180,7 +174,7 @@ class ClassificationModel:
                         None,
                         config=self.config,
                         state_dict=quantized_weights,
-                        weight=torch.Tensor(self.weight).to(self.device),
+                        class_weight=torch.Tensor(self.weight).to(self.device),
                     )
                 else:
                     self.model = model_class.from_pretrained(None, config=self.config, state_dict=quantized_weights)
@@ -306,10 +300,16 @@ class ClassificationModel:
                         )
                     ]
                 else:
-                    train_examples = [
-                        InputExample(i, text, None, label, weight)
-                        for i, (text, label, weight) in enumerate(zip(train_df["text"].astype(str), train_df["labels"], train_df["weight"]))
-                    ]
+                    if 'weight' in train_df.columns:
+                        train_examples = [
+                            InputExample(i, text, None, label, weight=weight)
+                            for i, (text, label, weight) in enumerate(zip(train_df["text"].astype(str), train_df["labels"], train_df["weight"]))
+                        ]
+                    else:
+                        train_examples = [
+                            InputExample(i, text, None, label)
+                            for i, (text, label) in enumerate(zip(train_df["text"].astype(str), train_df["labels"]))
+                        ]
             elif "text_a" in train_df.columns and "text_b" in train_df.columns:
                 if self.args.model_type == "layoutlm":
                     raise ValueError("LayoutLM cannot be used with sentence-pair tasks")
