@@ -10,7 +10,7 @@ def my_f1_score(y_true, y_pred):
     return sklearn.metrics.f1_score(y_true, y_pred, average='weighted')
 
 
-def load_fever_jsonl(input_path):
+def load_fever_jsonl(input_path, is_train=True):
     """
     Read list of objects from a JSON lines file.
     """
@@ -21,7 +21,10 @@ def load_fever_jsonl(input_path):
     print('Loaded {} records from {}'.format(len(data), input_path))
 
     db_data = []
-    db_cols = ['claim', 'gold_label']
+    if is_train:
+        db_cols = ['claim', 'gold_label', 'weight']
+    else:
+        db_cols = ['claim', 'gold_label']
     for d in data:
         db_data.append([])
         for col in db_cols:
@@ -63,11 +66,11 @@ if args.task == 'fnc':
     eval_df.columns = ['text', 'labels']
     eval_df = eval_df[eval_df.labels != 'unrelated']
 elif args.task == 'fever':
-    db_data, db_cols = load_fever_jsonl('dataset/fever/fever.train.jsonl')
+    db_data, db_cols = load_fever_jsonl('dataset/fever/fever.train.jsonl', is_train=True)
     train_df = pd.DataFrame(db_data, columns=db_cols)
-    train_df.columns = ['text', 'labels']
+    train_df.columns = ['text', 'labels', 'weight']
     # train_df = train_df[train_df.labels != 'NOT ENOUGH INFO']
-    db_data, db_cols = load_fever_jsonl('dataset/fever/fever.dev.jsonl')
+    db_data, db_cols = load_fever_jsonl('dataset/fever/fever.dev.jsonl', is_train=False)
     eval_df = pd.DataFrame(db_data, columns=db_cols)
     eval_df.columns = ['text', 'labels']
     # eval_df = eval_df[eval_df.labels != 'NOT ENOUGH INFO']

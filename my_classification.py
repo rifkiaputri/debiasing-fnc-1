@@ -293,7 +293,7 @@ class ClassificationModel:
             if "text" in train_df.columns and "labels" in train_df.columns:
                 if self.args.model_type == "layoutlm":
                     train_examples = [
-                        InputExample(i, text, None, label, x0, y0, x1, y1, 0.0)
+                        InputExample(i, text, None, label, x0, y0, x1, y1)
                         for i, (text, label, x0, y0, x1, y1) in enumerate(
                             zip(
                                 train_df["text"].astype(str),
@@ -307,8 +307,8 @@ class ClassificationModel:
                     ]
                 else:
                     train_examples = [
-                        InputExample(i, text, None, label)
-                        for i, (text, label) in enumerate(zip(train_df["text"].astype(str), train_df["labels"]))
+                        InputExample(i, text, None, label, weight)
+                        for i, (text, label, weight) in enumerate(zip(train_df["text"].astype(str), train_df["labels"], train_df["weight"]))
                     ]
             elif "text_a" in train_df.columns and "text_b" in train_df.columns:
                 if self.args.model_type == "layoutlm":
@@ -1431,9 +1431,6 @@ class ClassificationModel:
 
         if self.args.model_type == "layoutlm":
             inputs["bbox"] = batch[4]
-
-        if self.weight is not None:
-            inputs["class_weights"] = self.weight
 
         return inputs
 
