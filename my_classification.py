@@ -98,9 +98,12 @@ class ClassificationModel:
             torch.set_num_threads(self.args.thread_count)
 
         if "sweep_config" in kwargs:
+            self.is_sweeping = True
             sweep_config = kwargs.pop("sweep_config")
             sweep_values = sweep_config_to_sweep_values(sweep_config)
             self.args.update_from_dict(sweep_values)
+        else:
+            self.is_sweeping = False
 
         if self.args.manual_seed:
             random.seed(self.args.manual_seed)
@@ -482,7 +485,9 @@ class ClassificationModel:
             training_progress_scores = self._create_training_progress_scores(multi_label, **kwargs)
 
         if args.wandb_project:
-            wandb.init(project=args.wandb_project, config={**asdict(args)}, **args.wandb_kwargs)
+            if not wandb.setup().settings.sweep_id:
+                logger.info(" Initializing WandB run for training.")
+                wandb.init(project=args.wandb_project, config={**asdict(args)}, **args.wandb_kwargs)
             wandb.watch(self.model)
 
         if self.args.fp16:
@@ -556,7 +561,7 @@ class ClassificationModel:
                         tb_writer.add_scalar("lr", scheduler.get_last_lr()[0], global_step)
                         tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
                         logging_loss = tr_loss
-                        if args.wandb_project:
+                        if args.wandb_project or self.is_sweeping:
                             wandb.log(
                                 {
                                     "Training loss": current_loss,
@@ -600,7 +605,7 @@ class ClassificationModel:
                             os.path.join(args.output_dir, "training_progress_scores.csv"), index=False,
                         )
 
-                        if args.wandb_project:
+                        if args.wandb_project or self.is_sweeping:
                             wandb.log(self._get_last_metrics(training_progress_scores))
 
                         if not best_eval_metric:
@@ -686,7 +691,7 @@ class ClassificationModel:
                 report = pd.DataFrame(training_progress_scores)
                 report.to_csv(os.path.join(args.output_dir, "training_progress_scores.csv"), index=False)
 
-                if args.wandb_project:
+                if args.wandb_project or self.is_sweeping:
                     wandb.log(self._get_last_metrics(training_progress_scores))
 
                 if not best_eval_metric:
@@ -952,7 +957,9 @@ class ClassificationModel:
                 writer.write("{} = {}\n".format(key, str(result[key])))
 
         if self.args.wandb_project and wandb_log and not multi_label and not self.args.regression:
-            wandb.init(project=args.wandb_project, config={**asdict(args)}, **args.wandb_kwargs)
+            if not wandb.setup().settings.sweep_id:
+                logger.info(" Initializing WandB run for evaluation.")
+                wandb.init(project=args.wandb_project, config={**asdict(args)}, **args.wandb_kwargs)
             if not args.labels_map:
                 self.args.labels_map = {i: i for i in range(self.num_labels)}
 
@@ -960,16 +967,18 @@ class ClassificationModel:
             inverse_labels_map = {value: key for key, value in self.args.labels_map.items()}
 
             truth = [inverse_labels_map[out] for out in out_label_ids]
-            # ROC
-            wandb.log({"roc": wandb.plots.ROC(truth, model_outputs, labels_list)})
-
-            # Precision Recall
-            wandb.log({"pr": wandb.plots.precision_recall(truth, model_outputs, labels_list)})
 
             # Confusion Matrix
             wandb.sklearn.plot_confusion_matrix(
                 truth, [inverse_labels_map[np.argmax(out)] for out in model_outputs], labels=labels_list,
             )
+
+            if not self.args.sliding_window:
+                # ROC`
+                wandb.log({"roc": wandb.plots.ROC(truth, model_outputs, labels_list)})
+
+                # Precision Recall
+                wandb.log({"pr": wandb.plots.precision_recall(truth, model_outputs, labels_list)})
 
         return results, model_outputs, wrong
 
@@ -1422,6 +1431,9 @@ class ClassificationModel:
 
         if self.args.model_type == "layoutlm":
             inputs["bbox"] = batch[4]
+
+        if self.weight is not None:
+            inputs["class_weights"] = self.weight
 
         return inputs
 
