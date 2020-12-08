@@ -48,11 +48,13 @@ transformers_logger.setLevel(logging.WARNING)
 
 # Preparing label
 if args.task == 'fnc':
-    class_labels = ['agree', 'disagree', 'discuss']
-    # class_weights = [1, 2]
-    class_weights = [2.42, 10.61, 1.00]
+    class_labels = ['agree', 'disagree']
+    # class_labels = ['agree', 'disagree', 'discuss']
+    class_weights = [1.00, 4.38]
+    # class_weights = [2.42, 10.61, 1.00]
 elif args.task == 'fever':
-    class_labels = ['SUPPORTS', 'REFUTES', 'NOT ENOUGH INFO']
+    # class_labels = ['SUPPORTS', 'REFUTES', 'NOT ENOUGH INFO']
+    class_labels = ['SUPPORTS', 'REFUTES']
     class_weights = None
 else:
     class_labels = []
@@ -63,20 +65,20 @@ if args.task == 'fnc':
     train_df = pd.read_csv('dataset/train_stances.csv', usecols=['Headline', 'Stance'])
     train_df.columns = ['text', 'labels']
     train_df = train_df[train_df.labels != 'unrelated']
-    # train_df = train_df[train_df.labels != 'discuss']
+    train_df = train_df[train_df.labels != 'discuss']
     eval_df = pd.read_csv('dataset/competition_test_stances.csv', usecols=['Headline', 'Stance'])
     eval_df.columns = ['text', 'labels']
     eval_df = eval_df[eval_df.labels != 'unrelated']
-    # eval_df = eval_df[eval_df.labels != 'discuss']
+    eval_df = eval_df[eval_df.labels != 'discuss']
 elif args.task == 'fever':
-    db_data, db_cols = load_fever_jsonl('dataset/fever/fever.train.jsonl', is_train=False)
+    db_data, db_cols = load_fever_jsonl('dataset/fever/fever.train.jsonl', is_train=True)
     train_df = pd.DataFrame(db_data, columns=db_cols)
-    train_df.columns = ['text', 'labels']
-    # train_df = train_df[train_df.labels != 'NOT ENOUGH INFO']
+    train_df.columns = ['text', 'labels', 'weight']
+    train_df = train_df[train_df.labels != 'NOT ENOUGH INFO']
     db_data, db_cols = load_fever_jsonl('dataset/fever/fever.dev.jsonl', is_train=False)
     eval_df = pd.DataFrame(db_data, columns=db_cols)
     eval_df.columns = ['text', 'labels']
-    # eval_df = eval_df[eval_df.labels != 'NOT ENOUGH INFO']
+    eval_df = eval_df[eval_df.labels != 'NOT ENOUGH INFO']
 else:
     raise NotImplementedError('Undefined task.')
 
@@ -99,6 +101,7 @@ model_args.save_model_every_epoch = False
 model_args.evaluate_during_training = True
 model_args.best_eval_metric = 'f1'
 model_args.manual_seed = 42
+model_args.overwrite_output_dir = True
 
 # Create a ClassificationModel
 model = ClassificationModel(
@@ -108,6 +111,8 @@ model = ClassificationModel(
     weight=class_weights,
     args=model_args,
     cuda_device=args.dnum,
+    wandb_run_name=args.out,
+    has_bias_weight=True
 )
 
 # Train the model
@@ -121,6 +126,7 @@ model = ClassificationModel(
     weight=class_weights,
     args=model_args,
     cuda_device=args.dnum,
+    wandb_run_name=args.out
 )
 result, model_outputs, wrong_predictions = model.eval_model(eval_df)
 predictions, raw_outputs = model.predict(eval_df['text'].tolist())

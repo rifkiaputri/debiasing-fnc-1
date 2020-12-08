@@ -31,7 +31,8 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm, trange
 from tqdm.contrib import tenumerate
 from transformers.convert_graph_to_onnx import convert, quantize
-from transformers import AdamW, get_linear_schedule_with_warmup, BertConfig, BertTokenizer
+from transformers import AdamW, get_linear_schedule_with_warmup
+from pytorch_transformers import BertConfig, BertTokenizer
 
 from my_classification_utils import (
     InputExample,
@@ -63,6 +64,8 @@ class ClassificationModel:
         use_cuda=True,
         cuda_device=-1,
         onnx_execution_provider=None,
+        wandb_run_name=None,
+        has_bias_weight=False,
         **kwargs,
     ):
 
@@ -82,6 +85,8 @@ class ClassificationModel:
         """  # noqa: ignore flake8"
 
         self.args = self._load_model_args(model_name)
+        self.wandb_run_name = wandb_run_name
+        self.has_bias_weight = has_bias_weight
 
         if isinstance(args, dict):
             self.args.update_from_dict(args)
@@ -163,7 +168,7 @@ class ClassificationModel:
             if not self.args.quantized_model:
                 if self.weight:
                     self.model = model_class.from_pretrained(
-                        model_name, config=self.config, class_weight=torch.Tensor(self.weight).to(self.device), **kwargs,
+                        model_name, config=self.config, weight=torch.Tensor(self.weight).to(self.device), **kwargs,
                     )
                 else:
                     self.model = model_class.from_pretrained(model_name, config=self.config, **kwargs)
@@ -174,7 +179,7 @@ class ClassificationModel:
                         None,
                         config=self.config,
                         state_dict=quantized_weights,
-                        class_weight=torch.Tensor(self.weight).to(self.device),
+                        weight=torch.Tensor(self.weight).to(self.device),
                     )
                 else:
                     self.model = model_class.from_pretrained(None, config=self.config, state_dict=quantized_weights)
@@ -301,13 +306,14 @@ class ClassificationModel:
                     ]
                 else:
                     if 'weight' in train_df.columns:
+                        print('weight exist!')
                         train_examples = [
                             InputExample(i, text, None, label, weight=weight)
                             for i, (text, label, weight) in enumerate(zip(train_df["text"].astype(str), train_df["labels"], train_df["weight"]))
                         ]
                     else:
                         train_examples = [
-                            InputExample(i, text, None, label)
+                            InputExample(i, text, None, label, weight=None)
                             for i, (text, label) in enumerate(zip(train_df["text"].astype(str), train_df["labels"]))
                         ]
             elif "text_a" in train_df.columns and "text_b" in train_df.columns:
@@ -488,6 +494,9 @@ class ClassificationModel:
             if not wandb.setup().settings.sweep_id:
                 logger.info(" Initializing WandB run for training.")
                 wandb.init(project=args.wandb_project, config={**asdict(args)}, **args.wandb_kwargs)
+                if self.wandb_run_name is not None:
+                    wandb.run.name = self.wandb_run_name
+                    wandb.run.save()
             wandb.watch(self.model)
 
         if self.args.fp16:
@@ -960,6 +969,9 @@ class ClassificationModel:
             if not wandb.setup().settings.sweep_id:
                 logger.info(" Initializing WandB run for evaluation.")
                 wandb.init(project=args.wandb_project, config={**asdict(args)}, **args.wandb_kwargs)
+                if self.wandb_run_name is not None:
+                    wandb.run.name = self.wandb_run_name
+                    wandb.run.save()
             if not args.labels_map:
                 self.args.labels_map = {i: i for i in range(self.num_labels)}
 
@@ -1421,7 +1433,10 @@ class ClassificationModel:
         else:
             batch = tuple(t.to(self.device) for t in batch)
 
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3], "weights": batch[4]}
+            if self.has_bias_weight:
+                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3], "weights": batch[4]}
+            else:
+                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
 
             # XLM, DistilBERT and RoBERTa don't use segment_ids
             if self.args.model_type != "distilbert":
