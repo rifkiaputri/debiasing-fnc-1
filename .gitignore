@@ -133,6 +133,7 @@ dmypy.json
 
 # Ununsed dir
 dataset/*.xlsx
+dataset/*.jsonl
 cache_dir/
 runs/
 wandb/
