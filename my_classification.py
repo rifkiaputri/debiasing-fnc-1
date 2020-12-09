@@ -319,7 +319,16 @@ class ClassificationModel:
             elif "text_a" in train_df.columns and "text_b" in train_df.columns:
                 if self.args.model_type == "layoutlm":
                     raise ValueError("LayoutLM cannot be used with sentence-pair tasks")
+                if 'weight' in train_df.columns:
+                    print('weight [2 texts] exist!')
+                    train_examples = [
+                        InputExample(i, text_a, text_b, label, weight=weight)
+                        for i, (text_a, text_b, label, weight) in enumerate(
+                            zip(train_df["text_a"].astype(str), train_df["text_b"].astype(str), train_df["labels"], train_df["weight"])
+                        )
+                    ]
                 else:
+                    print('weight [2 texts] not exist!')
                     train_examples = [
                         InputExample(i, text_a, text_b, label)
                         for i, (text_a, text_b, label) in enumerate(

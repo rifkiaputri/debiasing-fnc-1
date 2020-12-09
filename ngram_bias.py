@@ -1,29 +1,23 @@
 import csv
-import sys
 import torch
 import torch.optim as optim
+import torch.nn as nn
 import jsonlines
 from tqdm import tqdm
 
 
-def get_word_loss(prob, thres, prob_float, thres_float):
-    if prob_float > thres_float:
-        return torch.mean((prob - thres)**2)
-    return torch.mean((0)**2)
-
-
 word_files = [
-    ('dataset/top_50_unigram_agree.csv', 'agree'),
-    ('dataset/top_50_unigram_disagree.csv', 'disagree'),
-    ('dataset/top_50_unigram_discuss.csv', 'discuss')
+    ('dataset/top_1000_unigram_agree.csv', 'agree'),
+    ('dataset/top_1000_unigram_disagree.csv', 'disagree'),
+    ('dataset/top_1000_unigram_discuss.csv', 'discuss')
 ]
 freq_data = {'agree': [], 'disagree': [], 'discuss': []}
 for file, label in word_files:
     with open(file, 'r', encoding='utf-8') as files:
         reader = csv.reader(files)
         for item in reader:
-            bigram, lmi, p_lw, freq, _, _, _ = item
-            freq_data[label].append((bigram, p_lw))
+            bigram, lmi, p_lw, freq, _, _, _, score_a, score_b = item
+            freq_data[label].append((bigram, p_lw, score_a, score_b))
 
 
 fp = open('dataset/fnc.train.no-unrel.jsonl', "r", encoding='utf-8')
@@ -31,54 +25,70 @@ reader = jsonlines.Reader(fp)
 
 train_claims = []
 train_sentence_label = []
-probs_tensor = []
-probs_float = []
+id_evidence = []
+prob_tensor = []
+score_a_tensor = []
+score_b_tensor = []
+zeros_instances = []
 for dictionary in tqdm(reader.iter()):
-    label, claim = dictionary['gold_label'], dictionary['claim']
-    train_sentence_label.append(label)
-    train_claims.append(claim)
-    probs_data = [prob for tok, prob in freq_data[label] if tok in claim]
-    max_prob = 0
-    for prob in probs_data:
-        if prob > max_prob:
-            max_prob = prob
-    probs_tensor.append(torch.Tensor([max_prob]))
-    probs_float.append(max_prob)
+    label, claim, id, evidence = dictionary['gold_label'], dictionary['claim'], dictionary['id'], dictionary['evidence']
+    probs_data = [(float(prob), int(score_a), int(score_b)) for tok, prob, score_a, score_b in freq_data[label] if tok in claim]
+    if len(probs_data) > 0:
+        max_prob, max_a, max_b = 0, 0, 1
+        for prob, score_a, score_b in probs_data:
+            if prob > max_prob:
+                max_prob = prob
+                max_a = score_a
+                max_b = score_b
+        prob_tensor.append(torch.tensor([max_prob]))
+        score_a_tensor.append(torch.tensor([max_a]))
+        score_b_tensor.append(torch.tensor([max_b]))
+        train_sentence_label.append(label)
+        train_claims.append(claim)
+        id_evidence.append((id, evidence))
+    else:
+        zeros_instances.append(dictionary)
 
-x = torch.nn.Parameter(torch.zeros(len(train_sentence_label)))
-if len(sys.argv) < 2:
-    lr = 1
-else:
-    lr = float(sys.argv[1])
-optimizer = optim.Adam(list([x]), lr=lr)
+x = torch.nn.Parameter(torch.zeros(len(train_sentence_label)), requires_grad=True)
+lr = 1
+optimizer = optim.Adam([x], lr=lr)
 epochs = 2000
 thres = torch.tensor([0.2])
-thres_float = 0.2
-for i in tqdm(range(epochs)):
+loss_fct = nn.MSELoss()
+pbar = tqdm(range(epochs))
+for i in pbar:
     optimizer.zero_grad()
-    loss = 0.0
     losses = []
-    for prob, prob_float in zip(probs_tensor, probs_float):
-        word_loss = get_word_loss(prob, thres, prob_float, thres_float)
-        losses.append(word_loss)
+    for j in range(len(score_a_tensor)):
+        pred = (score_a_tensor[j] * (1 + x[j])) / (score_b_tensor[j] * (1 + x[j]))
+        losses.append(loss_fct(pred, thres))
     loss = sum(losses) + (1e-10 * torch.norm(x))
     loss.backward()
     optimizer.step()
     for p in x:
         p.data.clamp_(0)
-    print(loss.data)
-    print(sum(x.data.numpy().tolist()))
+    pbar.set_description("Weight %s" % str(sum(x.data.numpy().tolist())))
 
 
-with open('parameters_' + str(epochs) + '.txt', 'w') as f:
-    for claim, weight, label in zip(train_claims, x.data.numpy().tolist(), train_sentence_label):
-        f.write(claim + "\n")
-        f.write(str(weight) + "\n")
-    f.close()
+with torch.no_grad():
+    for j in range(len(score_a_tensor)):
+        pred = (score_a_tensor[j] * (1 + x[j])) / (score_b_tensor[j] * (1 + x[j]))
+        print('Pred:', pred)
+        print('Prob:', prob_tensor[j])
+        print()
 
 
-print('Write csv data...')
-with open('dataset/fnc.train.no-unrel.weight.csv', 'w', encoding='utf-8', newline='\n') as out_csv:
-    writer = csv.writer(out_csv)
-    for claim, weight, label in zip(train_claims, x.data.numpy().tolist(), train_sentence_label):
-        writer.writerow([claim, weight, label])
+print('Write output data...')
+with jsonlines.open('dataset/fnc.train.no-unrel.weight_zeros.jsonl', mode='w') as writer:
+    for claim, weight, label, id_ev in zip(train_claims, x.data.numpy().tolist(), train_sentence_label, id_evidence):
+        writer.write({
+            'gold_label': label,
+            'evidence': id_ev[1],
+            'claim': claim,
+            'id': id_ev[0],
+            'weight': weight
+        })
+
+    for item in zeros_instances:
+        item['weight'] = 0.0
+        writer.write(item)

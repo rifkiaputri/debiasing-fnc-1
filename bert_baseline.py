@@ -33,8 +33,31 @@ def load_fever_jsonl(input_path, is_train=True):
     return db_data, db_cols
 
 
+def load_fever_jsonl_two_texts(input_path, is_train=True):
+    """
+    Read list of objects from a JSON lines file.
+    """
+    data = []
+    with open(input_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            data.append(json.loads(line.rstrip('\n|\r')))
+    print('Loaded {} records from {}'.format(len(data), input_path))
+
+    db_data = []
+    if is_train:
+        db_cols = ['claim', 'evidence', 'gold_label', 'weight']
+    else:
+        db_cols = ['claim', 'evidence', 'gold_label']
+    for d in data:
+        db_data.append([])
+        for col in db_cols:
+            db_data[-1].append(d.get(col, float('nan')))
+
+    return db_data, db_cols
+
+
 parser = argparse.ArgumentParser()
-parser.add_argument('-t', '--task', type=str, required=True, choices=['fever', 'fnc'], help='task type (fever/fnc)')
+parser.add_argument('-t', '--task', type=str, required=True, choices=['fever', 'fnc', 'fever-2'], help='task type (fever/fnc)')
 parser.add_argument('-o', '--out', type=str, required=True, help='output directory name')
 parser.add_argument('-p', '--proj', type=str, required=True, help='wandb project name')
 parser.add_argument('-d', '--dnum', type=int, required=True, help='cuda device num')
@@ -52,7 +75,7 @@ if args.task == 'fnc':
     # class_labels = ['agree', 'disagree', 'discuss']
     class_weights = [1.00, 4.38]
     # class_weights = [2.42, 10.61, 1.00]
-elif args.task == 'fever':
+elif args.task in ['fever', 'fever-2']:
     # class_labels = ['SUPPORTS', 'REFUTES', 'NOT ENOUGH INFO']
     class_labels = ['SUPPORTS', 'REFUTES']
     class_weights = None
@@ -71,13 +94,22 @@ if args.task == 'fnc':
     eval_df = eval_df[eval_df.labels != 'unrelated']
     eval_df = eval_df[eval_df.labels != 'discuss']
 elif args.task == 'fever':
-    db_data, db_cols = load_fever_jsonl('dataset/fever/fever.train.jsonl', is_train=True)
+    db_data, db_cols = load_fever_jsonl('dataset/fever/fever.train.jsonl', is_train=False)
     train_df = pd.DataFrame(db_data, columns=db_cols)
-    train_df.columns = ['text', 'labels', 'weight']
+    train_df.columns = ['text', 'labels']
     train_df = train_df[train_df.labels != 'NOT ENOUGH INFO']
     db_data, db_cols = load_fever_jsonl('dataset/fever/fever.dev.jsonl', is_train=False)
     eval_df = pd.DataFrame(db_data, columns=db_cols)
     eval_df.columns = ['text', 'labels']
+    eval_df = eval_df[eval_df.labels != 'NOT ENOUGH INFO']
+elif args.task == 'fever-2':
+    db_data, db_cols = load_fever_jsonl_two_texts('dataset/fever/fever.train.jsonl', is_train=False)
+    train_df = pd.DataFrame(db_data, columns=db_cols)
+    train_df.columns = ['text_a', 'text_b', 'labels']
+    train_df = train_df[train_df.labels != 'NOT ENOUGH INFO']
+    db_data, db_cols = load_fever_jsonl_two_texts('dataset/fever/fever.dev.jsonl', is_train=False)
+    eval_df = pd.DataFrame(db_data, columns=db_cols)
+    eval_df.columns = ['text_a', 'text_b', 'labels']
     eval_df = eval_df[eval_df.labels != 'NOT ENOUGH INFO']
 else:
     raise NotImplementedError('Undefined task.')
