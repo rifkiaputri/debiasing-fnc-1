@@ -18,14 +18,14 @@ def csv_to_jsonl(file_in_body, file_in_stances, file_out):
         i = 0
         for item in reader:
             headline, body_id, stance, _ = item
-            if stance != 'unrelated':
-                combined_data.append({
-                    'gold_label': stance,
-                    'evidence': body_to_article[body_id],
-                    'claim': headline,
-                    'id': i,
-                })
-                i += 1
+            # if stance != 'unrelated':
+            combined_data.append({
+                'gold_label': stance,
+                'evidence': body_to_article[body_id],
+                'claim': headline,
+                'id': i,
+            })
+            i += 1
 
     with jsonlines.open(file_out, mode='w') as writer:
         for item in combined_data:
@@ -33,4 +33,4 @@ def csv_to_jsonl(file_in_body, file_in_stances, file_out):
 
 
 if __name__ == '__main__':
-    csv_to_jsonl('dataset/combine_test_bodies.csv', 'dataset/combine_test_stances.csv', 'dataset/fnc.test.no-unrel.generated.jsonl')
+    csv_to_jsonl('dataset/combine_test_bodies.csv', 'dataset/combine_test_stances_v2.csv', 'dataset/fnc.test.generated.jsonl')
