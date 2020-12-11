@@ -207,7 +207,7 @@ else:
 # Optional model configuration
 model_args = ClassificationArgs()
 model_args.num_train_epochs = 3
-model_args.train_batch_size = 64
+model_args.train_batch_size = 32
 model_args.eval_batch_size = 32
 model_args.learning_rate = args.lr
 model_args.output_dir = '/mnt/nas2/kiki/debiasing-fnc-1/outputs/' + args.out + '/'
@@ -224,11 +224,13 @@ model_args.evaluate_during_training = True
 model_args.best_eval_metric = 'f1'
 model_args.manual_seed = 42
 model_args.overwrite_output_dir = True
+model_args.max_seq_length = 128
+model_args.do_lower_case = True
 
 # Create a ClassificationModel
 model = ClassificationModel(
     'bert',
-    'bert-base-cased',
+    'bert-base-uncased',
     num_labels=len(class_labels),
     weight=class_weights,
     args=model_args,
